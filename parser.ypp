@@ -1,0 +1,71 @@
+%{
+	#include <stdio.h>
+    #include <iostream>
+    #include "hw3_output.hpp"
+    #include "types.h"
+    #include "symTable.h"
+
+    extern int yylineno;
+    extern int yylex();
+    extern TableStack tables;
+    int yyerror(const char* message);
+%}
+
+%token SC ID NUM STRING INT BYTE BOOL B TRUE FALSE RETURN IF ELSE WHILE BREAK CONTINUE LBRACE RBRACE
+
+%right ASSIGN
+%left OR
+%left AND
+%left EQUALS
+%left RELOP
+%left PLUS_MINUS
+%left MUL_DIV
+%right NOT
+%left LPAREN RPAREN
+%right ELSE
+
+%%
+Program:Statements{$$=new Program();};
+Statements:Statement{$$ = new Statements(dynamic_cast<Statement*>($1));}
+    |Statements Statement{$$ = new Statements(dynamic_cast<Statements*>($1), dynamic_cast<Statement*>($2));};
+Statement:LBRACE {tables.addScope();} Statements {tables.removeScope();} RBRACE{}
+    |Type ID SC {$$ = new Statement(dynamic_cast<Type*>($1), $2);}
+    |Type ID ASSIGN Exp SC {$$ = new Statement(dynamic_cast<Type*>($1), $2, dynamic_cast<Exp*>($4));}
+    |ID ASSIGN Exp SC {$$ = new Statement($1, dynamic_cast<Exp*>($3));};
+    |Call SC {$$ = new Statement(dynamic_cast<Call*>($1));};
+    |RETURN SC {$$ = new Statement(new Exp(), true);};
+    |IF LPAREN BoolCond RPAREN M Statement                      {$$ = new Statement("IF", dynamic_cast<Exp*>($3));tables.removeScope();}
+    |IF LPAREN BoolCond RPAREN M Statement  ELSE {tables.removeScope();} M Statement {$$ = new Statement("IF ELSE", dynamic_cast<Exp*>($3)); tables.removeScope();}
+    |WHILE LPAREN BoolCond RPAREN  {tables.addScope(true);} Statement {tables.removeScope();}
+    |BREAK SC {$$ = new Statement($1);}
+    |CONTINUE SC {$$ = new Statement($1);};
+Call:ID LPAREN Exp RPAREN {$$ = new Call($1, $3);};
+Type:INT{$$ = new Type("int");}
+    |BYTE{$$ = new Type("byte");}
+    |BOOL{$$ = new Type("bool");};
+Exp: LPAREN Exp RPAREN{$$ = new Exp(dynamic_cast<Exp*>($2));}
+    |Exp PLUS_MINUS Exp {$$ = new Exp($1, $3, $2->value, "int");}
+    |Exp MUL_DIV Exp {$$ = new Exp($1, $3, $2->value, "int");}
+    |ID {$$ = new Exp(true, $1);}
+    |Call {$$ = new Exp(false, $1);}
+    |NUM  {$$ = new Exp($1, "int");}
+    |NUM B {$$ = new Exp($1, "byte");}
+    |STRING {$$ = new Exp($1, "string");}
+    |TRUE   {$$ = new Exp($1, "bool");}
+    |FALSE  {$$ = new Exp($1, "bool");}
+    |NOT Exp {$$ = new Exp($2, $2, $1->value, "bool");}
+    |Exp AND Exp {$$ = new Exp($1, $3, $2->value, "bool");}
+    |Exp OR Exp {$$ = new Exp($1, $3, $2->value, "bool");}
+    |Exp RELOP Exp {$$ = new Exp($1, $3, $2->value, "relop");}
+    |Exp EQUALS Exp {$$ = new Exp($1, $3, $2->value, "relop");}
+    |LPAREN Type RPAREN Exp {$$ = new Exp($4, $2);}
+M:    {tables.addScope();}
+BoolCond: Exp  {isBool($1);}
+%%
+TableStack tables = TableStack();
+int main() {
+    int ret=yyparse();
+    tables.checkSemanticsProgram();
+    return ret;
+}
+int yyerror(const char* message) { output::errorSyn(yylineno);exit(0);}
